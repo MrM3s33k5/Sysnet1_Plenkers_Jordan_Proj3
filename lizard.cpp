@@ -37,6 +37,8 @@ using namespace std;
  * Define "constant" values here
  */
 
+
+
 /*
  * Make this 1 to check for lizards travelling in both directions
  * Leave it 0 to allow bidirectional travel
@@ -152,7 +154,7 @@ int Cat::getId()
  {
 	 // launch the thread to simulate the cat's behavior	 
 	 // pthread_create ( .............., (void *) this);
-	 
+	 pthread_create ( &_thread, NULL, runThread, (void *) this); //RAP:  create cat thread
  }
  
  /**
@@ -163,6 +165,7 @@ int Cat::getId()
  void Cat::wait()
  {
 	 // wait for the thread to terminate
+     pthread_join(_thread, NULL);  // RAP:  join thread for each cat object
  }
  
  /**
@@ -298,8 +301,7 @@ int Lizard::getId()
  void Lizard::wait()
  {
 	 // wait for the thread to terminate
-	 
-	 // pthread_join (.....)
+     pthread_join(_thread, NULL);  // RAP:  join thread for each lizard object
  }
  
  /**
@@ -333,10 +335,24 @@ void * Lizard::runThread( void * param )
        * are already completed - see the comments.
        */
 
+      
+//FIXME:  Remove the pseudocode below before submitting
+/*************************************************
+Pseudocode from the assignment.  Put it here to make it easier to implement. 
 
 
+while (world has not ended)
+    sleep for up to MAX_LIZARD_SLEEP seconds
+    wait until [sago -> monkey grass] crossing is safe
+    cross [sago -> monkey grass]
+        it takes up to CROSS_SECONDS seconds to cross
+    eat in the monkey grass
+        it takes up to MAX_LIZARD_EAT seconds to eat
+    wait until [monkey grass -> sago] crossing is safe
+    cross [monkey grass -> sago]
+        it takes up to CROSS_SECONDS seconds to cross
 
-
+**************************************************/
 
 
 
@@ -624,7 +640,7 @@ int main(int argc, char **argv)
 	/*
      * Check for the debugging flag (-d)
      */
-	debug = 0;
+	debug = 1;
 	if (argc > 1)
 		if (strncmp(argv[1], "-d", 2) == 0)
 			debug = 1;
@@ -654,19 +670,49 @@ int main(int argc, char **argv)
 	/*
      * Create NUM_LIZARDS lizard threads
      */
-	Lizard** allLizards = new Lizard*[NUM_LIZARDS];
+	Lizard** allLizards = new Lizard*[NUM_LIZARDS];  // RAP:  create array of lizards
+    for(int i = 0; i < NUM_LIZARDS; i++)
+    {
+        if(debug)  // RAP:  debug print statement to verify lizard objects are created
+        {
+            cout << "Created Lizard Object:  " << i << endl;  
+        }
+        allLizards[i] = new Lizard(i);  // RAP:  initialize all Lizard objects
+    }
     
-    allLizards[0] = new Lizard(0);
-
     /*
      * Create NUM_CATS cat threads
      */
-	 
+	 Cat** allCats = new Cat*[NUM_CATS];  // RAP:  create array of cats
+     for(int i = 0; i < NUM_CATS; i++)
+     {
+        if(debug) // RAP:  debug print statement to verify cat objects are created
+        {
+            cout << "Created Cat Object:  " << i << endl;
+        }
+        allCats[i] = new Cat(i);  // RAP:  initialize all cat objects
+     }
 
 	/*
 	 * Run NUM_LIZARDS and NUM_CATS threads
 	 */
-
+    for(int i = 0; i < NUM_LIZARDS; i++)
+    {
+        if(debug)  // RAP:  debug print statement to verify lizard threads are started
+        {
+            cout << "Running Lizard Thread:  " << i << endl;  
+        }
+        allLizards[i]->run();  // RAP:  run all Lizard objects
+    }
+    
+    for(int i = 0; i < NUM_CATS; i++)
+    {
+        if(debug) // RAP:  debug print statement to verify cat threads are started
+        {
+            cout << "Running Cat Thread:  " << i << endl;
+        }
+        allCats[i]->run();  // RAP:  run all cat objects
+    }
 
 	/*
      * Now let the world run for a while
@@ -684,6 +730,15 @@ int main(int argc, char **argv)
      * Wait until all threads terminate
      */
 
+    for(int i = 0; i < NUM_LIZARDS; i++)
+    {
+        allLizards[i]->wait();  // RAP:  run all Lizard objects
+    }
+    
+    for(int i = 0; i < NUM_CATS; i++)
+    {
+        allCats[i]->wait();  // RAP:  run all cat objects
+    }
 
 
 
@@ -699,10 +754,17 @@ int main(int argc, char **argv)
 	 * Delete all cat and lizard objects
 	 */
 	 
-	delete allLizards[0];
+    for(int i = 0; i < NUM_LIZARDS; i++)
+    {
+        delete allLizards[i];
+    }
 	delete allLizards;
-
-
+    
+    for(int i = 0; i < NUM_CATS; i++)
+    {
+        delete allCats[i];
+    }
+    delete allCats;
 
 	/*
      * Exit happily
