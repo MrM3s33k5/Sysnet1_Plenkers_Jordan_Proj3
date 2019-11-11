@@ -21,7 +21,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <semaphore.h> // RAP: Using semaphore, so semaphor.h required
-
+#include <sys/time.h>  // RAP library for timing program
 using namespace std;
 
 /*
@@ -91,13 +91,20 @@ using namespace std;
 /*
  * Declare global variables here
  */
-sem_t sem;                       // RAP:  declare semaphore variable for 
-pthread_mutex_t lockSago2Monkey; // RAP:  decalre mutex lock varible for inc/dec 
-                                 //       numCrossingSago2MonkeyGrass
-pthread_mutex_t lockMonkey2Sago; // RAP:  decalre mutex lock varible for inc/dec 
-                                 //       numCrossingMonkeyGrass2Sago
+sem_t sem;                          // RAP:  declare semaphore variable for 
+pthread_mutex_t lockSago2Monkey;    // RAP:  declare mutex lock varible for inc/dec 
+                                    //       numCrossingSago2MonkeyGrass
+pthread_mutex_t lockMonkey2Sago;    // RAP:  declare mutex lock varible for inc/dec 
+                                    //       numCrossingMonkeyGrass2Sago
+pthread_mutex_t lockTimer;          // RAP:  declare mutext lock for timer variable
 
-
+                                    
+timespec start;         // RAP: start variable for timing program
+timespec stop;          // RAP: stop variable for timing program
+int lizardCrossCount;   // RAP: variable for counting total lizard crossings
+int maxNumLizardsCross; // RAP: variable for keeping track of maximum number of 
+                        //      lizards crossing for report
+double timeTotal;       // RAP: variable to store time program takes to execute
 
 /**************************************************/
 /* Please leave these variables alone.  They are  */
@@ -128,7 +135,6 @@ class Cat {
 		void wait();
 	private:
 		static void* runThread(void *param);
-		
 		void sleepNow();
 };
 
@@ -274,7 +280,6 @@ class Lizard {
 		void crossMonkeyGrass2Sago();
 		void madeIt2Sago();
 		void sleepNow();
-	
 };
 
 
@@ -320,8 +325,14 @@ int Lizard::getId()
  void Lizard::wait()
  {
 	 // wait for the thread to terminate
-     pthread_join(_thread, NULL);  // RAP:  join thread for each lizard object
+     pthread_mutex_lock(&lockTimer);             // RAP: lock stop variable 
+     clock_gettime(CLOCK_MONOTONIC, &stop); // RAP: last thread to get here will determine 
+                                            //      execution time.
+     pthread_mutex_unlock(&lockTimer);             // RAP: unlock stop variable
+     pthread_join(_thread, NULL);           // RAP: join thread for each lizard object
  }
+ 
+ 
  
 
  /**
@@ -332,7 +343,6 @@ int Lizard::getId()
   * @param param - N/A
   *
   * @return N/A
-  
   * Status: Incomplete - Make changes as you see are necessary.
   */
 void * Lizard::runThread( void * param )
@@ -376,8 +386,6 @@ void * Lizard::runThread( void * param )
 }
 
 
-
-
 /**
  * Simulate a lizard sleeping for a random amount of time
  *
@@ -405,8 +413,6 @@ void Lizard::sleepNow()
 }
 
 
-
- 
 /**
  *
  * Returns when it is safe for this lizard to cross from the sago
@@ -423,7 +429,7 @@ void Lizard::sago2MonkeyGrassIsSafe()
 		cout << std::flush;
     }
         
-    sem_wait(&sem); // RAP: if sem < 0, wait; otherwise decrement sem and continue
+    sem_wait(&sem); // RAP: if sem == 0, wait; otherwise decrement sem and continue
 
 	if (debug)
     {
@@ -442,19 +448,28 @@ void Lizard::sago2MonkeyGrassIsSafe()
  */
 void Lizard::crossSago2MonkeyGrass()
 {
+    int lizardsCrossing = 0; // RAP: variable used for counting current number of lizards crossing
+    
 	if (debug)
     {
       cout << "[" << _id << "] crossing  sago -> monkey grass" << endl;
       cout << std::flush;
     }
 
-
+    
     /*
     * One more crossing this way
     */
-    pthread_mutex_lock (&lockSago2Monkey); // RAP:  Lock  to increment numCrossingSago2MonkeyGrass
+    pthread_mutex_lock (&lockSago2Monkey);    // RAP:  Lock  to increment numCrossingSago2MonkeyGrass
     numCrossingSago2MonkeyGrass++;
-    pthread_mutex_unlock(&lockSago2Monkey); // RAP:  unlock numCrossingSago2MonkeyGrass
+    lizardCrossCount++;                       // RAP:  using sago2Monkey lock to also increment                    
+                                              //       lizardCrossCount variable
+    lizardsCrossing = numCrossingMonkeyGrass2Sago + numCrossingSago2MonkeyGrass;
+    if(maxNumLizardsCross < lizardsCrossing)  // RAP: if lizards currently crossing is greater than
+    {                                         //      the maximum lizards crossed, update variable
+        maxNumLizardsCross = lizardsCrossing; // RAP: use this lock to update maxLizardsCrossing also.
+    }
+    pthread_mutex_unlock(&lockSago2Monkey);   // RAP:  unlock numCrossingSago2MonkeyGrass
         
     /*
     * Check for lizards cross both ways
@@ -471,7 +486,7 @@ void Lizard::crossSago2MonkeyGrass()
     /*
      * It takes a while to cross, so simulate it
      */
-    sleep( CROSS_SECONDS );
+    sleep(1 + (int)(random() / (double)RAND_MAX * CROSS_SECONDS)); // RAP:  randomized crossing time
 
     /*
      * That one seems to have made it
@@ -558,7 +573,6 @@ void Lizard::monkeyGrass2SagoIsSafe()
 }
 
 
-
 /**
  * Delays for 1 second to simulate crossing from the monkey
  * grass to the sago. 
@@ -567,6 +581,9 @@ void Lizard::monkeyGrass2SagoIsSafe()
  */
 void Lizard::crossMonkeyGrass2Sago()
 {
+    
+    int lizardsCrossing = 0; // RAP: variable used for counting current number of lizards crossing
+    
 	if (debug)
     {
 		cout << "[" << _id << "] crossing  monkey grass -> sago" << endl;
@@ -576,10 +593,16 @@ void Lizard::crossMonkeyGrass2Sago()
     /*
      * One more crossing this way
      */
-    pthread_mutex_lock (&lockMonkey2Sago); // RAP:  Lock  to increment numCrossingMonkeyGrass2Sago
+    pthread_mutex_lock (&lockMonkey2Sago);    // RAP: Lock  to increment numCrossingMonkeyGrass2Sago
 	numCrossingMonkeyGrass2Sago++;
-    pthread_mutex_unlock(&lockMonkey2Sago); // RAP:  unlock numCrossingMonkeyGrass2Sago
-
+    lizardCrossCount++;                       // RAP: using Monkey2Sago lock to increment                    
+                                              //      lizardCrossCount variable
+    lizardsCrossing = numCrossingMonkeyGrass2Sago + numCrossingSago2MonkeyGrass;
+    if(maxNumLizardsCross < lizardsCrossing)  // RAP: if lizards currently crossing is greater than
+    {                                         //      the maximum lizards crossed, update variable
+        maxNumLizardsCross = lizardsCrossing; // RAP: use this lock to update maxLizardsCrossing also.
+    }
+    pthread_mutex_unlock(&lockMonkey2Sago);   // RAP: unlock numCrossingMonkeyGrass2Sago
 
     /*
      * Check for lizards cross both ways
@@ -595,7 +618,7 @@ void Lizard::crossMonkeyGrass2Sago()
 	/*
      * It takes a while to cross, so simulate it
      */
-	sleep( CROSS_SECONDS );
+	 sleep(1 + (int)(random() / (double)RAND_MAX * CROSS_SECONDS)); // RAP:  randomized crossing time
 
 	/*
      * That one seems to have made it
@@ -629,8 +652,32 @@ void Lizard::madeIt2Sago()
 }
 
  
-
-
+/**
+ * 
+ * RAP:  Function for printing program results to screen for report. 
+ * 
+ */
+void printResults()
+{
+    string lizardsSafe = "True";
+    string lizardsNotSafe = "False";
+    
+    cout << "WORLDEND (s):                                " << WORLDEND << endl;
+    cout << "Actual Time (s):                             " << timeTotal << endl;
+    cout << "Total Number of Lizards:                     " << NUM_LIZARDS << endl;
+    cout << "Maximum Number of Lizards Crossing:          " << maxNumLizardsCross << endl;
+    cout << "Total number of crossings (Each direction):  " << lizardCrossCount << endl; 
+    
+    if(MAX_LIZARD_CROSSING >= maxNumLizardsCross)
+    {
+        cout << "Lizards Safe:                                " << lizardsSafe << endl;
+    }
+    else
+    {
+        cout << "Lizards Safe:                                " << lizardsNotSafe << endl;
+    }
+}
+ 
 
 /*
  * main()
@@ -661,8 +708,9 @@ int main(int argc, char **argv)
      */
 	numCrossingSago2MonkeyGrass = 0;
 	numCrossingMonkeyGrass2Sago = 0;
-	running = 1;
-
+	running                     = 1;
+    lizardCrossCount            = 0;   // RAP: initialize lizard cross counter variable
+    timeTotal                   = 0.0; // RAP: initialize timer variable
 
 	/*
      * Initialize random number generator
@@ -683,20 +731,21 @@ int main(int argc, char **argv)
     sem_init(&sem, 0, (unsigned int)MAX_LIZARD_CROSSING); 
     
     
-    //FIXME:  Do we need these locks? Or will semaphore work for these variables also?
     if (pthread_mutex_init(&lockSago2Monkey, NULL) != 0) //RAP:  Initialize Sago2MonkeyGrass incrementer lock.  If init fails, main returns 0.
     {
         cout << "Failure to sync with mutex" << endl;
         return 0;
     }
-
     if (pthread_mutex_init(&lockMonkey2Sago, NULL) != 0) //RAP:  Initialize MonkeyGrass2Sago incrementer lock.  If init fails, main returns 0
     {
         cout << "Failure to sync with mutex" << endl;
         return 0;
     }
-    
-    
+    if (pthread_mutex_init(&lockTimer, NULL) != 0) //RAP:  initialize timer lock
+    {
+        cout << "Failure to sync with mutex" << endl;
+        return 0;
+    }
 
 	/*
      * Create NUM_LIZARDS lizard threads
@@ -723,8 +772,10 @@ int main(int argc, char **argv)
         }
         allCats[i] = new Cat(i);  // RAP:  initialize all cat objects
      }
-
-	/*
+     
+     clock_gettime(CLOCK_MONOTONIC, &start); // RAP: get start time
+	
+    /*
 	 * Run NUM_LIZARDS and NUM_CATS threads
 	 */
     for(int i = 0; i < NUM_LIZARDS; i++)
@@ -763,47 +814,44 @@ int main(int argc, char **argv)
 
     for(int i = 0; i < NUM_LIZARDS; i++)
     {
-        allLizards[i]->wait();  // RAP:  run all Lizard objects
+        allLizards[i]->wait();  // RAP:  set all Lizard objects to wait state
     }
     
     for(int i = 0; i < NUM_CATS; i++)
     {
-        allCats[i]->wait();  // RAP:  run all cat objects
+        allCats[i]->wait();  // RAP:  set all cat objects to wait state
     }
 
-
-
-
-    
+    timeTotal = ((1e9 * (stop.tv_sec - start.tv_sec)) + (stop.tv_nsec - start.tv_nsec)) * 1e-9;
+    printResults(); // RAP: print results to screen for report. 
     
 
 	/*
      * Delete the locks and semaphores
      */
-    sem_destroy(&sem);  // RAP:  destroy semaphore
-    pthread_mutex_destroy(&lockSago2Monkey); // RAP: destroy lock for numCrossingSago2MonkeyGrass
-    pthread_mutex_destroy(&lockMonkey2Sago); // RAP: destroy lock for numCrossingMonkeyGrass2Sago
+    sem_destroy(&sem);                         // RAP: destroy semaphore
+    pthread_mutex_destroy(&lockSago2Monkey);   // RAP: destroy lock for numCrossingSago2MonkeyGrass
+    pthread_mutex_destroy(&lockMonkey2Sago);   // RAP: destroy lock for numCrossingMonkeyGrass2Sago
+    pthread_mutex_destroy(&lockTimer);         // RAP: destroy timer lock
 
-    
 	/*
 	 * Delete all cat and lizard objects
 	 */
+
 	 
     for(int i = 0; i < NUM_LIZARDS; i++)
     {
         delete allLizards[i];  // RAP:  delete lizard object pointers
     }
-	delete allLizards; // RAP:  delete pointer to lizard object array
+	delete [] allLizards; // RAP:  delete pointer to lizard object array
     
     for(int i = 0; i < NUM_CATS; i++)
     {
         delete allCats[i];  // RAP:  delete cat object pointers
     }
-    delete allCats; // RAP:  delete pointer to cat object array
+    delete [] allCats; // RAP:  delete pointer to cat object array
 
 
-    
-    
 	/*
      * Exit happily
      */
